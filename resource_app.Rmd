@@ -1,0 +1,119 @@
+---
+title: "SNAP retailers during the Great Recession (2008-2017): Changes in and across metro areas"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(shinyWidgets)
+library(rgdal)
+
+ga_counties<-st_read("data/US_county_2012_Georgia_AAA_WGS84.shp") %>%
+  arrange(NAME)
+
+```
+
+Map by metro area
+=====================================  
+
+Column {.sidebar data-width=400}
+-----------------------------------------------------------------------
+
+### Data selection
+
+This application allows you to explore the database of SNAP authorized retailers from 2008-2017 in 45 metropolitan areas, identified by their largest city.
+
+Use the tools below to select the city, types of retailers, and years to include. Click on a point to see more information on that retailer.
+
+```{r}
+
+#This list will eventually include SNAP/WIC retailers, program sites, Extension offices, DFACS offices, and health offices. Maybe also food pantries?
+checkboxGroupInput("storegroup", 
+                    ("Retailer types"), 
+                    choices = list("Supermarkets/supercenters" = "Supermarket", 
+                                   "Groceries" = "Grocer", 
+                                   "Convenience/dollar stores" = "Small retail",
+                                   "Specialty retailers"="Specialty",
+                                   "Local foods"="Local foods"),
+                              selected = c("Supermarket","Grocer", "Small retail","Specialty","Local foods"))
+
+selectInput("county","County selection",
+            choices=ga_counties$NAME)
+
+HTML("If no stores are visible, click on the button below")
+
+actionButton("loadstores1","Load stores")
+
+HTML("<br>Download a spreadsheet of selected retailers<br>")
+
+downloadButton('downloadData','Download Result Set')
+
+downloadHandler(filename = function() {
+     paste("SNAPretailers_",input$county,"_",Sys.Date(),".csv",sep="")
+   },
+     content = function(file) {
+     write.csv(ga_counties, file, row.names = FALSE)
+   }
+)
+
+HTML("<br>Data source: USDA Benefits Redemption Division<br>")
+
+
+```
+
+Column {data-height=600}
+-----------------------------------------------------------------------
+
+```{r}
+
+#Subset data based on store type and year
+county_select<-reactive({
+ga_counties %>%
+    filter(NAME==input$county)
+})
+
+#We will need a reactive which creates all the points added to the map
+
+output$map<-renderLeaflet({
+    center<-st_centroid(county_select())
+  leaflet() %>%
+   addProviderTiles(providers$OpenStreetMap) %>%
+    addPolygons(data=county_select()) %>%
+    addCircleMarkers()#This is where the store data would go
+})
+
+
+# observeEvent(input$county,{
+#   
+# 
+#   
+#   leafletProxy("map") %>%
+#     clearMarkers() %>%
+#     clearControls() %>%
+#     fitBounds() %>%
+#     addPolygons(data=county_select())
+# })
+
+leafletOutput("map",height=900)
+
+```
+
+
+
+About this map
+=====================================
+
+This map shows SNAP autorized retailers from a database of approximately 450,000 total records from 2008 through 2017. These records were obtained through a request to USDA's Benefit Redemptions Division and linked across years by name and address. The full dataset includes all authorized retailers, but this site maps the five largest metropolitan statistical areas (MSAs) in each of the nine census regions and each county in the US. Each MSA is identified by its largest city in the dropdown menu. 
+
+The number of SNAP retailers increased significantly in the years following the Great Recession. The control tools allow users to select stores based on when they first appear in the dataset. Stores appearing in 2008 may have been present before this period, and those with a last year of 2017 may still be open, as these are the current start and end points of the data. Using the dropdown selection tool allows users to identify stores that became authorized to redeem SNAP benefits during this period. These groups are based on USDA's store classifications. The exact USDA classifications are available in the store popup windows and the downloadable spreadsheet.
+
+Users can download store data for any city using the button provided here. The full dataset is available on the [project website](https://github.com/jshannon75/snap_retailers_2008_2017). A fuller description of the dataset is also available in [this summary document](https://jshannon75.github.io/snap_retailers_2008_2017/overview_paper).
